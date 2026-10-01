@@ -32,7 +32,14 @@ export default function LibraryScreen() {
   }, [photos]);
 
   const visible = photosMatching(photos, filter);
-  const tile = (width - 20 * 2 - 10) / 2;
+  const columns = width >= 720 ? 3 : 2;
+  const gutter = 6;
+  const pad = 12;
+  const tile = Math.floor((width - pad * 2 - gutter * (columns - 1)) / columns);
+  const rows: typeof visible[] = [];
+  for (let index = 0; index < visible.length; index += columns) {
+    rows.push(visible.slice(index, index + columns));
+  }
 
   async function runImport(action: () => Promise<{ status: string; added: number; failed: number }>) {
     let outcome: { status: string; added: number; failed: number };
@@ -58,10 +65,10 @@ export default function LibraryScreen() {
     <View style={[styles.fill, { backgroundColor: theme.bg }]}>
       <ScrollView
         contentContainerStyle={{
-          paddingTop: insets.top + 12,
-          paddingHorizontal: 20,
-          paddingBottom: 28,
-          gap: 18,
+          paddingTop: insets.top + 8,
+          paddingHorizontal: pad,
+          paddingBottom: 20,
+          gap: 12,
         }}>
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
@@ -101,30 +108,34 @@ export default function LibraryScreen() {
         ) : visible.length === 0 ? (
           <EmptyState title={`No ${vibeLabel(filter as VibeId).toLowerCase()} photos`} body="Try another vibe, or add a picture with a different kind of light." />
         ) : (
-          <View style={styles.grid}>
-            {visible.map((photo) => (
-              <View key={photo.id} style={[styles.tile, { width: tile, height: tile }]}>
-                <Image source={{ uri: photo.uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={180} pointerEvents="none" />
-                <LinearGradient colors={['transparent', 'rgba(9,8,13,0.78)']} style={styles.scrim} pointerEvents="none" />
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open photo tagged ${photo.tags.map(vibeLabel).join(', ')}`}
-                  onPress={() => router.push(`/photo/${photo.id}` as Href)}
-                  style={({ pressed }) => [StyleSheet.absoluteFill, { opacity: pressed ? 0.88 : 1 }]}
-                />
-                <View style={styles.tileTags} pointerEvents="none">
-                  {tagsForDisplay(photo.tags, filter).map((tag) => (
-                    <Tag key={tag} id={tag} onPhoto />
-                  ))}
-                </View>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Remove from shelf"
-                  onPress={() => setPendingDelete(photo.id)}
-                  hitSlop={6}
-                  style={({ pressed }) => [styles.tileDelete, { opacity: pressed ? 0.7 : 1 }]}>
-                  <Icon name="trash" color="#F6F3EE" size={16} />
-                </Pressable>
+          <View style={{ gap: gutter }}>
+            {rows.map((row) => (
+              <View key={row[0].id} style={[styles.gridRow, { gap: gutter }]}>
+                {row.map((photo) => (
+                  <View key={photo.id} style={[styles.tile, { width: tile, height: tile }]}>
+                    <Image source={{ uri: photo.uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={180} pointerEvents="none" />
+                    <LinearGradient colors={['transparent', 'rgba(9,8,13,0.72)']} style={styles.scrim} pointerEvents="none" />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open photo tagged ${photo.tags.map(vibeLabel).join(', ')}`}
+                      onPress={() => router.push(`/photo/${photo.id}` as Href)}
+                      style={({ pressed }) => [StyleSheet.absoluteFill, { opacity: pressed ? 0.88 : 1 }]}
+                    />
+                    <View style={styles.tileTags} pointerEvents="none">
+                      {tagsForDisplay(photo.tags, filter).map((tag) => (
+                        <Tag key={tag} id={tag} onPhoto />
+                      ))}
+                    </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Remove from shelf"
+                      onPress={() => setPendingDelete(photo.id)}
+                      hitSlop={10}
+                      style={({ pressed }) => [styles.tileDelete, { opacity: pressed ? 0.7 : 1 }]}>
+                      <Icon name="trash" color="#F6F3EE" size={13} />
+                    </Pressable>
+                  </View>
+                ))}
               </View>
             ))}
           </View>
@@ -203,7 +214,7 @@ function FilterChip({ label, selected, onPress }: { label: string; selected: boo
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  wordmark: { fontSize: 34, lineHeight: 38 },
+  wordmark: { fontSize: 32, lineHeight: 36 },
   sub: { marginTop: 2, fontSize: 14 },
   filters: { gap: 8, paddingRight: 8 },
   filter: {
@@ -212,20 +223,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  tile: { borderRadius: 18, overflow: 'hidden', backgroundColor: '#221F2A' },
-  scrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '48%' },
-  tileTags: { position: 'absolute', left: 8, right: 8, bottom: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  gridRow: { flexDirection: 'row' },
+  tile: { borderRadius: 14, overflow: 'hidden', backgroundColor: '#221F2A' },
+  scrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '46%' },
+  tileTags: { position: 'absolute', left: 6, right: 6, bottom: 6, flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   tileDelete: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 6,
+    right: 6,
     zIndex: 2,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(9,8,13,0.55)',
+    backgroundColor: 'rgba(9,8,13,0.62)',
   },
 });
