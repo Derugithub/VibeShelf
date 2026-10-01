@@ -28,6 +28,7 @@ export default function PhotoScreen() {
   const [removing, setRemoving] = useState(false);
   const [note, setNote] = useState(photo?.note ?? '');
   const noteRef = useRef(note);
+  const noteInputRef = useRef<TextInput>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveNote = useRef(updatePhotoNote);
   const photoIdRef = useRef(photo?.id);
@@ -119,33 +120,46 @@ export default function PhotoScreen() {
 
   return (
     <View style={[styles.fill, { backgroundColor: theme.bg }]}>
-      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 28 }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: insets.bottom + 28 }}>
         <Image source={{ uri: photo.uri }} style={styles.hero} contentFit="cover" />
         <View style={styles.body}>
           <View style={[styles.noteCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <TextInput
-              value={note}
-              onChangeText={(value) => {
-                const next = value.slice(0, PHOTO_NOTE_LIMIT);
-                setNote(next);
-                if (saveTimer.current) clearTimeout(saveTimer.current);
-                saveTimer.current = setTimeout(() => {
+            <View style={styles.noteRow}>
+              <TextInput
+                ref={noteInputRef}
+                value={note}
+                onChangeText={(value) => {
+                  const next = value.slice(0, PHOTO_NOTE_LIMIT);
+                  setNote(next);
+                  if (saveTimer.current) clearTimeout(saveTimer.current);
+                  saveTimer.current = setTimeout(() => {
+                    updatePhotoNote(photo.id, next).catch(() => undefined);
+                  }, 300);
+                }}
+                onBlur={() => {
+                  if (saveTimer.current) clearTimeout(saveTimer.current);
+                  const next = noteRef.current.trim().slice(0, PHOTO_NOTE_LIMIT);
+                  setNote(next);
                   updatePhotoNote(photo.id, next).catch(() => undefined);
-                }, 300);
-              }}
-              onBlur={() => {
-                if (saveTimer.current) clearTimeout(saveTimer.current);
-                const next = noteRef.current.trim().slice(0, PHOTO_NOTE_LIMIT);
-                setNote(next);
-                updatePhotoNote(photo.id, next).catch(() => undefined);
-              }}
-              placeholder="Add a short note…"
-              placeholderTextColor={theme.textFaint}
-              maxLength={PHOTO_NOTE_LIMIT}
-              multiline
-              accessibilityLabel="Note"
-              style={[styles.noteInput, { color: theme.text, fontFamily: fonts.body }]}
-            />
+                }}
+                placeholder="Add a short note…"
+                placeholderTextColor={theme.textFaint}
+                maxLength={PHOTO_NOTE_LIMIT}
+                multiline
+                returnKeyType="done"
+                submitBehavior="blurAndSubmit"
+                accessibilityLabel="Note"
+                style={[styles.noteInput, { color: theme.text, fontFamily: fonts.body }]}
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Done"
+                onPress={() => noteInputRef.current?.blur()}
+                hitSlop={8}
+                style={({ pressed }) => [styles.noteDone, { backgroundColor: theme.bg, opacity: pressed ? 0.7 : 1 }]}>
+                <Icon name="check" color={theme.accent} size={18} />
+              </Pressable>
+            </View>
             <Text style={[styles.noteCount, { color: theme.textFaint, fontFamily: fonts.medium }]}>
               {PHOTO_NOTE_LIMIT - note.length} left
             </Text>
@@ -283,12 +297,25 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     gap: 6,
   },
+  noteRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
   noteInput: {
+    flex: 1,
     fontSize: 16,
     lineHeight: 22,
     minHeight: 44,
     padding: 0,
     textAlignVertical: 'top',
+  },
+  noteDone: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   noteCount: {
     alignSelf: 'flex-end',
