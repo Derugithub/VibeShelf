@@ -2,7 +2,7 @@ import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 
 import { EMPTY_SHELF, type Board, type Photo, type ShelfData } from '@/src/types';
-import { isVibeId, type VibeId } from '@/src/vibe/analyze';
+import { isVibeId, normalizeTags, type VibeId } from '@/src/vibe/analyze';
 
 const KEY = 'vibeshelf.v1';
 
@@ -25,7 +25,7 @@ function asPhoto(value: unknown): Photo | null {
     width: raw.width,
     height: raw.height,
     createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
-    tags: tags.length ? tags : ['muted'],
+    tags: normalizeTags(tags.length ? tags : ['muted']),
     colors: colors.length ? colors : ['#8E8A96'],
     brightness: typeof raw.brightness === 'number' ? raw.brightness : 0.5,
     saturation: typeof raw.saturation === 'number' ? raw.saturation : 0,

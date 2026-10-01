@@ -1,6 +1,6 @@
 import { type Href, router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,7 +10,7 @@ import { Sheet } from '@/src/components/Sheet';
 import { Tag } from '@/src/components/Tag';
 import { useLibrary } from '@/src/library';
 import { fonts, useTheme } from '@/src/theme';
-import { colorLabel, lightLabel, nearestColorName } from '@/src/vibe/analyze';
+import { colorLabel, lightLabel, nearestColorName, normalizeTags } from '@/src/vibe/analyze';
 
 export default function PhotoScreen() {
   const theme = useTheme();
@@ -22,10 +22,27 @@ export default function PhotoScreen() {
   const [boardsOpen, setBoardsOpen] = useState(false);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState('');
+  const [draft, setDraft] = useState<string[]>([]);
+  const [confirming, setConfirming] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   function goBack() {
     if (router.canGoBack()) router.back();
     else router.replace('/');
+  }
+
+  function closeBoards() {
+    setBoardsOpen(false);
+    setNaming(false);
+    setName('');
+  }
+
+  function openBoards() {
+    if (!photo) return;
+    setDraft(boards.filter((board) => board.photoIds.includes(photo.id)).map((board) => board.id));
+    setNaming(false);
+    setName('');
+    setBoardsOpen(true);
   }
 
   if (!photo) {
@@ -37,12 +54,22 @@ export default function PhotoScreen() {
     );
   }
 
-  function toggleBoard(boardId: string) {
-    const board = boards.find((item) => item.id === boardId);
-    if (!board || !photo) return;
-    const has = board.photoIds.includes(photo.id);
-    const next = has ? board.photoIds.filter((item) => item !== photo.id) : [...board.photoIds, photo.id];
-    setBoardPhotoIds(boardId, next).catch(() => undefined);
+  function toggleDraft(boardId: string) {
+    setDraft((current) => (current.includes(boardId) ? current.filter((item) => item !== boardId) : [...current, boardId]));
+  }
+
+  async function savePins() {
+    if (!photo) return;
+    const wanted = new Set(draft);
+    const jobs = boards.map((board) => {
+      const has = board.photoIds.includes(photo.id);
+      const should = wanted.has(board.id);
+      if (has === should) return Promise.resolve();
+      const next = should ? [...board.photoIds, photo.id] : board.photoIds.filter((item) => item !== photo.id);
+      return setBoardPhotoIds(board.id, next);
+    });
+    await Promise.all(jobs);
+    closeBoards();
   }
 
   async function createAndPin() {
@@ -50,26 +77,20 @@ export default function PhotoScreen() {
     if (!trimmed || !photo) return;
     const board = await createBoard(trimmed);
     await setBoardPhotoIds(board.id, [photo.id]);
-    setName('');
-    setNaming(false);
-    setBoardsOpen(false);
+    closeBoards();
     router.push(`/board/${board.id}` as Href);
   }
 
-  function confirmDelete() {
-    Alert.alert('Remove this photo?', 'It leaves your shelf and any boards. The original in your photo library stays put.', [
-      { text: 'Keep', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: () => {
-          if (!photo) return;
-          deletePhoto(photo.id)
-            .then(goBack)
-            .catch(() => undefined);
-        },
-      },
-    ]);
+  async function removePhoto() {
+    if (!photo || removing) return;
+    setRemoving(true);
+    try {
+      await deletePhoto(photo.id);
+      setConfirming(false);
+      goBack();
+    } finally {
+      setRemoving(false);
+    }
   }
 
   const onBoards = boards.filter((board) => board.photoIds.includes(photo.id));
@@ -83,7 +104,7 @@ export default function PhotoScreen() {
             {lightLabel(photo.brightness)} · {colorLabel(photo.saturation)}
           </Text>
           <View style={styles.tags}>
-            {photo.tags.map((tag) => (
+            {normalizeTags(photo.tags).map((tag) => (
               <Tag key={tag} id={tag} />
             ))}
           </View>
@@ -93,13 +114,12 @@ export default function PhotoScreen() {
               <View key={color} style={styles.swatch}>
                 <View style={[styles.chip, { backgroundColor: color, borderColor: theme.border }]} />
                 <Text style={{ color: theme.text, fontFamily: fonts.medium, fontSize: 13 }}>{nearestColorName(color)}</Text>
-                <Text style={{ color: theme.textFaint, fontFamily: fonts.body, fontSize: 12 }}>{color}</Text>
               </View>
             ))}
           </View>
           <Text style={[styles.section, { color: theme.text, fontFamily: fonts.displaySoft }]}>Boards</Text>
           {onBoards.length === 0 ? (
-            <Text style={{ color: theme.textSoft, fontFamily: fonts.body, fontSize: 15 }}>Not pinned to a board yet.</Text>
+            <Text style={{ color: theme.textSoft, fontFamily: fonts.body, fontSize: 15 }}>Not on a board yet.</Text>
           ) : (
             <View style={styles.tags}>
               {onBoards.map((board) => (
@@ -111,41 +131,25 @@ export default function PhotoScreen() {
               ))}
             </View>
           )}
-          <Button label="Add to a board" onPress={() => setBoardsOpen(true)} />
+          <Button label="Add to a board" onPress={openBoards} />
+          <Button label="Remove from shelf" variant="danger" onPress={() => setConfirming(true)} />
         </View>
       </ScrollView>
       <View style={[styles.topBar, { top: insets.top + 8 }]}>
         <IconButton label="Back" onPress={goBack}>
           <Icon name="back" color={theme.text} />
         </IconButton>
-        <IconButton label="Delete photo" onPress={confirmDelete}>
+        <IconButton label="Remove from shelf" onPress={() => setConfirming(true)}>
           <Icon name="trash" color={theme.danger} />
         </IconButton>
       </View>
 
-      <Sheet visible={boardsOpen} title="Pin to a board" onClose={() => setBoardsOpen(false)}>
-        {boards.length === 0 ? (
-          <Text style={{ color: theme.textSoft, fontFamily: fonts.body, fontSize: 16 }}>
-            You do not have a board yet. Name one and this photo will be first.
-          </Text>
-        ) : (
-          boards.map((board) => {
-            const selected = board.photoIds.includes(photo.id);
-            return (
-              <Pressable
-                key={board.id}
-                accessibilityRole="button"
-                accessibilityLabel={`${selected ? 'Remove from' : 'Add to'} ${board.name}`}
-                onPress={() => toggleBoard(board.id)}
-                style={[styles.row, { borderColor: theme.border }]}>
-                <Text style={{ color: theme.text, fontFamily: fonts.medium, fontSize: 16, flex: 1 }}>{board.name}</Text>
-                {selected ? <Icon name="check" color={theme.mode === 'dark' ? theme.accent : theme.accent} /> : null}
-              </Pressable>
-            );
-          })
-        )}
+      <Sheet visible={boardsOpen} title={naming ? 'New board' : 'Add to a board'} onClose={closeBoards}>
         {naming ? (
           <>
+            <Text style={{ color: theme.textSoft, fontFamily: fonts.body, fontSize: 16 }}>
+              Name the board. This photo will be the first one on it.
+            </Text>
             <TextInput
               value={name}
               onChangeText={setName}
@@ -155,11 +159,53 @@ export default function PhotoScreen() {
               autoFocus
               style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg, fontFamily: fonts.medium }]}
             />
-            <Button label="Create and pin" onPress={createAndPin} disabled={!name.trim()} />
+            <Button label="Create board" onPress={createAndPin} disabled={!name.trim()} />
+            <Button
+              label="Back"
+              variant="ghost"
+              onPress={() => {
+                setNaming(false);
+                setName('');
+              }}
+            />
           </>
         ) : (
-          <Button label="New board" variant="secondary" onPress={() => setNaming(true)} />
+          <>
+            {boards.length === 0 ? (
+              <Text style={{ color: theme.textSoft, fontFamily: fonts.body, fontSize: 16 }}>
+                You do not have a board yet. Name one and this photo will be first.
+              </Text>
+            ) : (
+              <ScrollView style={styles.boardList} contentContainerStyle={{ paddingBottom: 4 }}>
+                {boards.map((board) => {
+                  const selected = draft.includes(board.id);
+                  return (
+                    <Pressable
+                      key={board.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${selected ? 'Selected' : 'Not selected'} ${board.name}`}
+                      onPress={() => toggleDraft(board.id)}
+                      style={[styles.row, { borderColor: theme.border }]}>
+                      <Text style={{ color: theme.text, fontFamily: fonts.medium, fontSize: 16, flex: 1 }}>{board.name}</Text>
+                      {selected ? <Icon name="check" color={theme.accent} /> : null}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
+            {boards.length > 0 ? <Button label="Done" onPress={savePins} /> : null}
+            <Button label="New board" variant="secondary" onPress={() => setNaming(true)} />
+            <Button label="Cancel" variant="ghost" onPress={closeBoards} />
+          </>
         )}
+      </Sheet>
+
+      <Sheet visible={confirming} title="Remove this photo?" onClose={() => setConfirming(false)}>
+        <Text style={{ color: theme.textSoft, fontFamily: fonts.body, fontSize: 16, lineHeight: 23 }}>
+          It leaves your shelf and any boards. The original in your photo library stays where it is.
+        </Text>
+        <Button label={removing ? 'Removing…' : 'Remove from shelf'} variant="danger" onPress={removePhoto} disabled={removing} />
+        <Button label="Keep photo" variant="secondary" onPress={() => setConfirming(false)} />
       </Sheet>
     </View>
   );
@@ -170,7 +216,8 @@ const styles = StyleSheet.create({
   missing: { padding: 24, gap: 16, justifyContent: 'center' },
   topBar: {
     position: 'absolute',
-    zIndex: 2,
+    zIndex: 4,
+    elevation: 8,
     left: 16,
     right: 16,
     flexDirection: 'row',
@@ -191,6 +238,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     overflow: 'hidden',
   },
+  boardList: { maxHeight: 280 },
   row: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     paddingVertical: 12,

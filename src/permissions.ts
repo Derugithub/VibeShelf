@@ -5,8 +5,8 @@ function explain(kind: 'library' | 'camera') {
   const title = kind === 'library' ? 'Photo access is off' : 'Camera access is off';
   const body =
     kind === 'library'
-      ? 'VibeShelf needs your photo library to import pictures. You can turn it on in Settings. The sample shelf still works, and nothing is uploaded.'
-      : 'VibeShelf needs the camera to snap a photo onto your shelf. You can turn it on in Settings. Pictures stay on this device.';
+      ? 'VibeShelf needs your photo library to add pictures. You can turn it on in Settings. Sample photos still work, and nothing is uploaded.'
+      : 'VibeShelf needs the camera to take a photo for your shelf. You can turn it on in Settings. Your pictures stay on this phone.';
   Alert.alert(title, body, [
     { text: 'Not now', style: 'cancel' },
     { text: 'Open Settings', onPress: () => Linking.openSettings() },
@@ -31,7 +31,7 @@ async function ensure(
     else {
       Alert.alert(
         kind === 'library' ? 'Photo library unavailable' : 'Camera unavailable',
-        'You can still add the sample shelf. Photos you do import stay on this device.',
+        'You can still add the sample photos. Pictures you add stay on this phone.',
       );
     }
     return false;

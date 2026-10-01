@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { IconButton } from '@/src/components/Button';
+import { Icon } from '@/src/components/Icon';
 import { fonts, useTheme } from '@/src/theme';
 
 export function Sheet({
@@ -39,7 +41,12 @@ export function Sheet({
             },
           ]}>
           <View style={[styles.handle, { backgroundColor: theme.border }]} />
-          <Text style={[styles.title, { color: theme.text, fontFamily: fonts.displaySoft }]}>{title}</Text>
+          <View style={styles.header}>
+            <Text style={[styles.title, { color: theme.text, fontFamily: fonts.displaySoft }]}>{title}</Text>
+            <IconButton label={`Close ${title}`} onPress={onClose}>
+              <Icon name="close" color={theme.text} />
+            </IconButton>
+          </View>
           {children}
         </View>
       </KeyboardAvoidingView>
@@ -72,9 +79,14 @@ const styles = StyleSheet.create({
     width: 42,
     height: 4,
     borderRadius: 2,
-    marginBottom: 4,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   title: {
+    flex: 1,
     fontSize: 26,
   },
 });

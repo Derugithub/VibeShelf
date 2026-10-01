@@ -12,23 +12,26 @@ import { Sheet } from '@/src/components/Sheet';
 import { Tag } from '@/src/components/Tag';
 import { useLibrary } from '@/src/library';
 import { fonts, useTheme } from '@/src/theme';
-import { VIBE_IDS, vibeLabel, type VibeId } from '@/src/vibe/analyze';
+import { normalizeTags, VIBE_IDS, vibeLabel, type VibeId } from '@/src/vibe/analyze';
+import { photosMatching, tagsForDisplay } from '@/src/vibe/match';
 
 export default function LibraryScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const { photos, importFromLibrary, importFromCamera, importSamples } = useLibrary();
+  const { photos, importFromLibrary, importFromCamera, importSamples, deletePhoto } = useLibrary();
   const [filter, setFilter] = useState<VibeId | 'all'>('all');
   const [about, setAbout] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   const present = useMemo(() => {
     const tags = new Set<VibeId>();
-    photos.forEach((photo) => photo.tags.forEach((tag) => tags.add(tag)));
+    photos.forEach((photo) => normalizeTags(photo.tags).forEach((tag) => tags.add(tag)));
     return VIBE_IDS.filter((tag) => tags.has(tag));
   }, [photos]);
 
-  const visible = filter === 'all' ? photos : photos.filter((photo) => photo.tags.includes(filter));
+  const visible = photosMatching(photos, filter);
   const tile = (width - 20 * 2 - 10) / 2;
 
   async function runImport(action: () => Promise<{ status: string; added: number; failed: number }>) {
@@ -36,15 +39,15 @@ export default function LibraryScreen() {
     try {
       outcome = await action();
     } catch {
-      Alert.alert('Could not add photos', 'Something went wrong reading those pictures on this device.');
+      Alert.alert('Could not add photos', 'Something went wrong with those pictures. Try again in a moment.');
       return;
     }
     if (outcome.failed > 0) {
       Alert.alert(
         'Some photos were skipped',
         outcome.added
-          ? `${outcome.added} added. ${outcome.failed} could not be read on this device.`
-          : 'Those photos could not be read on this device.',
+          ? `${outcome.added} added. ${outcome.failed} could not be added.`
+          : 'Those photos could not be added.',
       );
     } else if (outcome.status === 'empty' && outcome.added === 0) {
       Alert.alert('Nothing new', 'Those photos are already on your shelf, or none could be added.');
@@ -64,7 +67,7 @@ export default function LibraryScreen() {
           <View style={{ flex: 1 }}>
             <Text style={[styles.wordmark, { color: theme.text, fontFamily: fonts.display }]}>VibeShelf</Text>
             <Text style={[styles.sub, { color: theme.textSoft, fontFamily: fonts.body }]}>
-              {photos.length === 0 ? 'On this device' : `${photos.length} ${photos.length === 1 ? 'photo' : 'photos'} on this device`}
+              {photos.length === 0 ? 'Your photos' : `${photos.length} ${photos.length === 1 ? 'photo' : 'photos'}`}
             </Text>
           </View>
           <IconButton label="About VibeShelf" onPress={() => setAbout(true)}>
@@ -90,7 +93,7 @@ export default function LibraryScreen() {
         {photos.length === 0 ? (
           <EmptyState
             title="Nothing on the shelf yet"
-            body="Import a photo, take one, or drop in a sample set. Tags are read from the pixels here. The pictures never leave the phone.">
+            body="Choose a photo, take one, or start with a few samples. Each picture gets a short vibe from its color and light. Your photos stay on your phone.">
             <Button label="Choose photos" onPress={() => runImport(importFromLibrary)} icon={<Icon name="image" color={theme.mode === 'dark' ? '#1A1524' : '#FFFFFF'} size={18} />} />
             <Button label="Take a photo" variant="secondary" onPress={() => runImport(importFromCamera)} icon={<Icon name="camera" color={theme.text} size={18} />} />
             <Button label="Add sample photos" variant="ghost" onPress={() => runImport(importSamples)} />
@@ -100,29 +103,38 @@ export default function LibraryScreen() {
         ) : (
           <View style={styles.grid}>
             {visible.map((photo) => (
-              <Pressable
-                key={photo.id}
-                accessibilityRole="button"
-                accessibilityLabel={`Open photo tagged ${photo.tags.map(vibeLabel).join(', ')}`}
-                onPress={() => router.push(`/photo/${photo.id}` as Href)}
-                style={({ pressed }) => [styles.tile, { width: tile, height: tile, opacity: pressed ? 0.88 : 1 }]}>
-                <Image source={{ uri: photo.uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={180} />
-                <LinearGradient colors={['transparent', 'rgba(9,8,13,0.78)']} style={styles.scrim} />
-                <View style={styles.tileTags}>
-                  {photo.tags.slice(0, 2).map((tag) => (
+              <View key={photo.id} style={[styles.tile, { width: tile, height: tile }]}>
+                <Image source={{ uri: photo.uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={180} pointerEvents="none" />
+                <LinearGradient colors={['transparent', 'rgba(9,8,13,0.78)']} style={styles.scrim} pointerEvents="none" />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open photo tagged ${photo.tags.map(vibeLabel).join(', ')}`}
+                  onPress={() => router.push(`/photo/${photo.id}` as Href)}
+                  style={({ pressed }) => [StyleSheet.absoluteFill, { opacity: pressed ? 0.88 : 1 }]}
+                />
+                <View style={styles.tileTags} pointerEvents="none">
+                  {tagsForDisplay(photo.tags, filter).map((tag) => (
                     <Tag key={tag} id={tag} onPhoto />
                   ))}
                 </View>
-              </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove from shelf"
+                  onPress={() => setPendingDelete(photo.id)}
+                  hitSlop={6}
+                  style={({ pressed }) => [styles.tileDelete, { opacity: pressed ? 0.7 : 1 }]}>
+                  <Icon name="trash" color="#F6F3EE" size={16} />
+                </Pressable>
+              </View>
             ))}
           </View>
         )}
       </ScrollView>
 
-      <Sheet visible={about} title="About this shelf" onClose={() => setAbout(false)}>
+      <Sheet visible={about} title="About VibeShelf" onClose={() => setAbout(false)}>
         <Text style={{ color: theme.textSoft, fontFamily: fonts.body, fontSize: 16, lineHeight: 23 }}>
-          Vibe tags come from on-device color and brightness. Nothing is sent to a server. Boards and copies of your
-          photos live in app storage on this phone.
+          Each photo gets a few words from its color and light. Your pictures and boards stay on this phone. Removing a
+          photo here leaves the original in your photo library.
         </Text>
         <Button label="Add sample photos" variant="secondary" onPress={() => runImport(importSamples)} />
         <Button
@@ -133,6 +145,31 @@ export default function LibraryScreen() {
             router.push('/onboarding');
           }}
         />
+      </Sheet>
+
+      <Sheet
+        visible={pendingDelete !== null}
+        title="Remove this photo?"
+        onClose={() => {
+          if (!removing) setPendingDelete(null);
+        }}>
+        <Text style={{ color: theme.textSoft, fontFamily: fonts.body, fontSize: 16, lineHeight: 23 }}>
+          It leaves your shelf and any boards. The original in your photo library stays where it is.
+        </Text>
+        <Button
+          label={removing ? 'Removing…' : 'Remove from shelf'}
+          variant="danger"
+          disabled={removing}
+          onPress={() => {
+            if (!pendingDelete || removing) return;
+            const id = pendingDelete;
+            setRemoving(true);
+            deletePhoto(id)
+              .then(() => setPendingDelete(null))
+              .finally(() => setRemoving(false));
+          }}
+        />
+        <Button label="Keep photo" variant="secondary" onPress={() => setPendingDelete(null)} disabled={removing} />
       </Sheet>
     </View>
   );
@@ -179,4 +216,16 @@ const styles = StyleSheet.create({
   tile: { borderRadius: 18, overflow: 'hidden', backgroundColor: '#221F2A' },
   scrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '48%' },
   tileTags: { position: 'absolute', left: 8, right: 8, bottom: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  tileDelete: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(9,8,13,0.55)',
+  },
 });

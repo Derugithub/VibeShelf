@@ -15,6 +15,7 @@ import { confirm } from '@/src/haptics';
 import { getPhotoBytes, objectUrlFromBytes } from '@/src/idbPhotos';
 import { ensureCameraPermission, ensureLibraryPermission } from '@/src/permissions';
 import { createPhotoFromUri, deletePhotoFile, loadSampleInputs } from '@/src/photos';
+import { withoutBoard, withoutPhoto } from '@/src/shelf';
 import { loadShelf, saveShelf } from '@/src/storage';
 import { createId, EMPTY_SHELF, type Board, type Photo, type ShelfData } from '@/src/types';
 
@@ -22,6 +23,7 @@ type ImportOutcome = {
   status: 'added' | 'canceled' | 'denied' | 'empty';
   added: number;
   failed: number;
+  photoIds: string[];
 };
 
 type LibraryContextValue = {
@@ -39,6 +41,7 @@ type LibraryContextValue = {
   renameBoard: (id: string, name: string) => Promise<void>;
   deleteBoard: (id: string) => Promise<void>;
   setBoardPhotoIds: (id: string, photoIds: string[]) => Promise<void>;
+  pinPhotos: (id: string, photoIds: string[]) => Promise<void>;
   photoById: (id: string) => Photo | undefined;
   boardById: (id: string) => Board | undefined;
 };
@@ -74,13 +77,15 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const commit = useCallback((recipe: (prev: ShelfData) => ShelfData) => {
+    const next = recipe(shelfRef.current);
+    shelfRef.current = next;
+    setShelf(next);
     const run = queue.current.then(async () => {
-      const next = recipe(shelfRef.current);
-      shelfRef.current = next;
-      setShelf(next);
       await saveShelf(next);
     });
-    queue.current = run.catch(() => undefined);
+    queue.current = run.catch((error) => {
+      console.warn('VibeShelf could not save', error);
+    });
     return run;
   }, []);
 
@@ -89,7 +94,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       items: { uri: string; width?: number; height?: number; sampleKey?: string }[],
       label: string,
     ): Promise<ImportOutcome> => {
-      if (busy.current) return { status: 'empty', added: 0, failed: 0 };
+      if (busy.current) return { status: 'empty', added: 0, failed: 0, photoIds: [] };
       busy.current = true;
       const created: Photo[] = [];
       let failed = 0;
@@ -118,6 +123,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
           status: created.length ? 'added' : 'empty',
           added: created.length,
           failed,
+          photoIds: created.map((photo) => photo.id),
         };
       } finally {
         setActivity(null);
@@ -129,7 +135,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
 
   const importFromLibrary = useCallback(async (): Promise<ImportOutcome> => {
     const allowed = await ensureLibraryPermission();
-    if (!allowed) return { status: 'denied', added: 0, failed: 0 };
+    if (!allowed) return { status: 'denied', added: 0, failed: 0, photoIds: [] };
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
@@ -137,30 +143,30 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       quality: 0.85,
       exif: false,
     });
-    if (result.canceled || result.assets.length === 0) return { status: 'canceled', added: 0, failed: 0 };
+    if (result.canceled || result.assets.length === 0) return { status: 'canceled', added: 0, failed: 0, photoIds: [] };
     return importItems(
       result.assets.map((asset) => ({ uri: asset.uri, width: asset.width, height: asset.height })),
-      'Reading color',
+      'Adding photo',
     );
   }, [importItems]);
 
   const importFromCamera = useCallback(async (): Promise<ImportOutcome> => {
     const allowed = await ensureCameraPermission();
-    if (!allowed) return { status: 'denied', added: 0, failed: 0 };
+    if (!allowed) return { status: 'denied', added: 0, failed: 0, photoIds: [] };
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
       quality: 0.85,
       exif: false,
     });
-    if (result.canceled || result.assets.length === 0) return { status: 'canceled', added: 0, failed: 0 };
+    if (result.canceled || result.assets.length === 0) return { status: 'canceled', added: 0, failed: 0, photoIds: [] };
     const asset = result.assets[0];
-    return importItems([{ uri: asset.uri, width: asset.width, height: asset.height }], 'Reading color');
+    return importItems([{ uri: asset.uri, width: asset.width, height: asset.height }], 'Adding photo');
   }, [importItems]);
 
   const importSamples = useCallback(async (): Promise<ImportOutcome> => {
     const inputs = await loadSampleInputs();
     const fresh = inputs.filter((item) => !shelfRef.current.photos.some((photo) => photo.sampleKey === item.sampleKey));
-    if (fresh.length === 0) return { status: 'empty', added: 0, failed: 0 };
+    if (fresh.length === 0) return { status: 'empty', added: 0, failed: 0, photoIds: [] };
     return importItems(fresh, 'Adding samples');
   }, [importItems]);
 
@@ -177,16 +183,8 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       importSamples,
       deletePhoto: async (id: string) => {
         const photo = shelfRef.current.photos.find((item) => item.id === id);
-        await commit((prev) => ({
-          ...prev,
-          photos: prev.photos.filter((item) => item.id !== id),
-          boards: prev.boards.map((board) => ({
-            ...board,
-            photoIds: board.photoIds.filter((photoId) => photoId !== id),
-            updatedAt: board.photoIds.includes(id) ? Date.now() : board.updatedAt,
-          })),
-        }));
-        if (photo) await deletePhotoFile(photo.uri, photo.id);
+        await commit((prev) => withoutPhoto(prev, id));
+        if (photo) await deletePhotoFile(photo.uri, photo.id).catch(() => undefined);
       },
       createBoard: async (name: string) => {
         const board: Board = {
@@ -207,14 +205,25 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
             board.id === id ? { ...board, name: name.trim(), updatedAt: Date.now() } : board,
           ),
         })).then(() => undefined),
-      deleteBoard: (id: string) =>
-        commit((prev) => ({ ...prev, boards: prev.boards.filter((board) => board.id !== id) })).then(() => undefined),
+      deleteBoard: (id: string) => commit((prev) => withoutBoard(prev, id)).then(() => undefined),
       setBoardPhotoIds: (id: string, photoIds: string[]) =>
         commit((prev) => ({
           ...prev,
           boards: prev.boards.map((board) =>
             board.id === id ? { ...board, photoIds, updatedAt: Date.now() } : board,
           ),
+        })).then(() => undefined),
+      pinPhotos: (id: string, photoIds: string[]) =>
+        commit((prev) => ({
+          ...prev,
+          boards: prev.boards.map((board) => {
+            if (board.id !== id) return board;
+            const merged = [...board.photoIds];
+            for (const photoId of photoIds) {
+              if (!merged.includes(photoId)) merged.push(photoId);
+            }
+            return { ...board, photoIds: merged, updatedAt: Date.now() };
+          }),
         })).then(() => undefined),
       photoById: (id: string) => shelfRef.current.photos.find((photo) => photo.id === id),
       boardById: (id: string) => shelfRef.current.boards.find((board) => board.id === id),

@@ -28,6 +28,7 @@ import { confirm } from '@/src/haptics';
 import { useLibrary } from '@/src/library';
 import { fonts, useTheme } from '@/src/theme';
 import type { Photo } from '@/src/types';
+import { normalizeTags } from '@/src/vibe/analyze';
 
 export default function BoardScreen() {
   const theme = useTheme();
@@ -35,11 +36,14 @@ export default function BoardScreen() {
   const { width } = useWindowDimensions();
   const { id } = useLocalSearchParams<{ id: string }>();
   const boardId = Array.isArray(id) ? id[0] : id;
-  const { photos, boards, renameBoard, deleteBoard, setBoardPhotoIds } = useLibrary();
+  const { photos, boards, renameBoard, deleteBoard, setBoardPhotoIds, pinPhotos, importFromCamera, importFromLibrary } =
+    useLibrary();
   const board = boards.find((item) => item.id === boardId);
   const [arrange, setArrange] = useState(false);
   const [picker, setPicker] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [name, setName] = useState(board?.name ?? '');
   const [exporting, setExporting] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -95,20 +99,28 @@ export default function BoardScreen() {
     ).catch(() => undefined);
   }
 
-  function confirmDelete() {
-    if (!board) return;
-    Alert.alert('Delete this board?', 'The photos stay in your library.', [
-      { text: 'Keep', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          deleteBoard(board.id)
-            .then(goBack)
-            .catch(() => undefined);
-        },
-      },
-    ]);
+  async function removeBoard() {
+    if (!board || removing) return;
+    setRemoving(true);
+    try {
+      await deleteBoard(board.id);
+      setConfirming(false);
+      goBack();
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  async function addFresh(kind: 'camera' | 'library') {
+    setPicker(false);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    try {
+      const outcome = kind === 'camera' ? await importFromCamera() : await importFromLibrary();
+      if (outcome.photoIds.length) await pinPhotos(boardId, outcome.photoIds);
+      else if (outcome.failed > 0) Alert.alert('Could not add that photo', 'Try another one in a moment.');
+    } catch {
+      Alert.alert('Could not add that photo', 'Try again in a moment.');
+    }
   }
 
   async function saveName() {
@@ -146,7 +158,7 @@ export default function BoardScreen() {
       }
       const available = await Sharing.isAvailableAsync();
       if (!available) {
-        Alert.alert('Sharing is unavailable', 'This device cannot open the share sheet right now.');
+        Alert.alert('Sharing is unavailable', 'Sharing is not available right now.');
         return;
       }
       const dest = new File(Paths.cache, `vibeshelf-${slug}.png`);
@@ -159,7 +171,7 @@ export default function BoardScreen() {
       confirm();
     } catch (error) {
       console.warn('VibeShelf export failed', error);
-      Alert.alert('Could not export', 'The collage could not be captured on this device. Try again in a moment.');
+      Alert.alert('Could not export', 'The collage could not be saved. Try again in a moment.');
     } finally {
       setSharing(false);
     }
@@ -181,13 +193,13 @@ export default function BoardScreen() {
             <Icon name="back" color={theme.text} />
           </IconButton>
           <View style={{ flex: 1 }} />
-          <IconButton label="Rename board" onPress={() => { setName(board.name); setRenameOpen(true); }}>
+          <IconButton label="Edit board" onPress={() => { setName(board.name); setRenameOpen(true); }}>
             <Icon name="edit" color={theme.text} />
           </IconButton>
           <IconButton label="Export collage" onPress={() => setExporting(true)}>
             <Icon name="share" color={theme.text} />
           </IconButton>
-          <IconButton label="Delete board" onPress={confirmDelete}>
+          <IconButton label="Delete board" onPress={() => setConfirming(true)}>
             <Icon name="trash" color={theme.danger} />
           </IconButton>
         </View>
@@ -211,8 +223,19 @@ export default function BoardScreen() {
         {ordered.length === 0 ? (
           <EmptyState
             title="This board is empty"
-            body="Pin photos from your library. You can reorder them before you export a collage.">
-            <Button label="Add photos" onPress={() => setPicker(true)} />
+            body="Take a photo, choose one from your library, or pin pictures already on your shelf.">
+            <Button
+              label="Take a photo"
+              onPress={() => addFresh('camera')}
+              icon={<Icon name="camera" color={theme.mode === 'dark' ? '#1A1524' : '#FFFFFF'} size={18} />}
+            />
+            <Button
+              label="Choose photos"
+              variant="secondary"
+              onPress={() => addFresh('library')}
+              icon={<Icon name="image" color={theme.text} size={18} />}
+            />
+            <Button label="Add from shelf" variant="ghost" onPress={() => setPicker(true)} />
           </EmptyState>
         ) : arrange ? (
           <View style={{ gap: 10 }}>
@@ -221,7 +244,7 @@ export default function BoardScreen() {
                 <Image source={{ uri: photo.uri }} style={styles.thumb} contentFit="cover" />
                 <View style={{ flex: 1, gap: 6 }}>
                   <View style={styles.tags}>
-                    {photo.tags.slice(0, 2).map((tag) => (
+                    {normalizeTags(photo.tags).slice(0, 2).map((tag) => (
                       <Tag key={tag} id={tag} />
                     ))}
                   </View>
@@ -244,7 +267,9 @@ export default function BoardScreen() {
           <View style={styles.masonry}>
             {columns.map((column, columnIndex) => (
               <View key={columnIndex} style={{ flex: 1, gap: 10 }}>
-                {column.map(({ photo, height }) => (
+                {column.map(({ photo, height }) => {
+                  const lead = normalizeTags(photo.tags)[0];
+                  return (
                   <Pressable
                     key={photo.id}
                     accessibilityRole="button"
@@ -258,14 +283,16 @@ export default function BoardScreen() {
                     style={({ pressed }) => [{ height, opacity: pressed ? 0.9 : 1 }]}>
                     <Image source={{ uri: photo.uri }} style={[styles.masonryImage, { height }]} contentFit="cover" />
                     <View style={styles.masonryTag}>
-                      {photo.tags[0] ? <Tag id={photo.tags[0]} onPhoto /> : null}
+                      {lead ? <Tag id={lead} onPhoto /> : null}
                     </View>
                   </Pressable>
-                ))}
+                  );
+                })}
               </View>
             ))}
           </View>
         )}
+        <Button label="Delete board" variant="danger" onPress={() => setConfirming(true)} />
       </ScrollView>
 
       <PickerSheet
@@ -273,13 +300,24 @@ export default function BoardScreen() {
         photos={photos}
         selectedIds={board.photoIds}
         onClose={() => setPicker(false)}
+        onImport={(kind) => {
+          addFresh(kind).catch(() => undefined);
+        }}
         onSave={(ids) => {
           setBoardPhotoIds(board.id, ids).catch(() => undefined);
           setPicker(false);
         }}
       />
 
-      <Sheet visible={renameOpen} title="Rename board" onClose={() => setRenameOpen(false)}>
+      <Sheet visible={confirming} title="Delete this board?" onClose={() => setConfirming(false)}>
+        <Text style={{ color: theme.textSoft, fontFamily: fonts.body, fontSize: 16, lineHeight: 23 }}>
+          The board goes away. Your photos stay in the library.
+        </Text>
+        <Button label={removing ? 'Deleting…' : 'Delete board'} variant="danger" onPress={removeBoard} disabled={removing} />
+        <Button label="Keep board" variant="secondary" onPress={() => setConfirming(false)} disabled={removing} />
+      </Sheet>
+
+      <Sheet visible={renameOpen} title="Edit board" onClose={() => setRenameOpen(false)}>
         <TextInput
           value={name}
           onChangeText={setName}
@@ -325,12 +363,14 @@ function PickerSheet({
   selectedIds,
   onClose,
   onSave,
+  onImport,
 }: {
   visible: boolean;
   photos: Photo[];
   selectedIds: string[];
   onClose: () => void;
   onSave: (ids: string[]) => void;
+  onImport: (kind: 'camera' | 'library') => void;
 }) {
   const theme = useTheme();
   const [selected, setSelected] = useState<string[]>(selectedIds);
@@ -350,10 +390,22 @@ function PickerSheet({
   }
 
   return (
-    <Sheet visible={visible} title="Choose photos" onClose={onClose}>
+    <Sheet visible={visible} title="Add photos" onClose={onClose}>
+      <Button
+        label="Take a photo"
+        variant="secondary"
+        onPress={() => onImport('camera')}
+        icon={<Icon name="camera" color={theme.text} size={18} />}
+      />
+      <Button
+        label="Choose photos"
+        variant="secondary"
+        onPress={() => onImport('library')}
+        icon={<Icon name="image" color={theme.text} size={18} />}
+      />
       {photos.length === 0 ? (
         <Text style={{ color: theme.textSoft, fontFamily: fonts.body, fontSize: 16 }}>
-          Your library is empty. Import a photo first, then pin it here.
+          Nothing on your shelf yet. Take a photo or choose one to add it here.
         </Text>
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>

@@ -91,8 +91,8 @@ export const Collage = forwardRef<View, { title: string; photos: Photo[]; width:
       ) : null}
       <Text style={[styles.footer, { fontFamily: fonts.body }]}>
         {photos.length > shown.length
-          ? `First ${shown.length} of ${photos.length} · made on this device`
-          : `${shown.length} ${shown.length === 1 ? 'photo' : 'photos'} · made on this device`}
+          ? `First ${shown.length} of ${photos.length}`
+          : `${shown.length} ${shown.length === 1 ? 'photo' : 'photos'}`}
       </Text>
     </View>
   );

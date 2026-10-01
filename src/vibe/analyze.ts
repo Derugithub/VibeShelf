@@ -41,10 +41,17 @@ export function isVibeId(value: string): value is VibeId {
   return (VIBE_IDS as readonly string[]).includes(value);
 }
 
+export function normalizeTags(tags: readonly VibeId[]): VibeId[] {
+  const found = new Set(tags);
+  if (found.has('pastel') || found.has('vivid')) found.delete('muted');
+  const next = VIBE_IDS.filter((id) => found.has(id));
+  return next.length ? next : ['muted'];
+}
+
 export function lightLabel(brightness: number): string {
-  if (brightness < 0.28) return 'Low light';
-  if (brightness < 0.62) return 'Balanced';
-  return 'High key';
+  if (brightness < 0.28) return 'Dim light';
+  if (brightness < 0.62) return 'Even light';
+  return 'Bright light';
 }
 
 export function colorLabel(saturation: number): string {
@@ -229,7 +236,7 @@ export function analyzeRgba(data: Uint8Array, width: number, height: number): Vi
 
   if (found.size === 0) found.add(brightness >= 0.5 ? 'bright' : 'moody');
 
-  const tags = VIBE_IDS.filter((id) => found.has(id)).slice(0, 4);
+  const tags = normalizeTags(VIBE_IDS.filter((id) => found.has(id))).slice(0, 4);
 
   const ranked = [...buckets.values()].sort((a, b) => b.count - a.count);
   const colors: string[] = [];

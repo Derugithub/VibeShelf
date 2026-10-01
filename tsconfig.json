@@ -15,6 +15,6 @@
     "expo-env.d.ts"
   ],
   "exclude": [
-    "src/vibe/analyze.test.ts"
+    "src/**/*.test.ts"
   ]
 }

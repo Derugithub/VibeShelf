@@ -41,7 +41,7 @@ export default function BoardsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: theme.text, fontFamily: fonts.display }]}>Boards</Text>
             <Text style={[styles.sub, { color: theme.textSoft, fontFamily: fonts.body }]}>
-              Collections that stay on this device
+              Group photos into a mood
             </Text>
           </View>
           <IconButton label="New board" onPress={() => setOpen(true)}>

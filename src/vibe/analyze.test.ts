@@ -44,6 +44,13 @@ test('pastel pink', () => {
   const result = solid(244, 214, 222);
   has(result.tags, 'pastel');
   has(result.tags, 'bright');
+  assert.equal(result.tags.includes('muted'), false);
+});
+
+test('washed light color is pastel, not muted', () => {
+  const result = solid(240, 230, 228);
+  assert.equal(result.tags.includes('muted'), false);
+  assert.ok(result.tags.includes('pastel') || result.tags.includes('bright'));
 });
 
 test('vivid warm', () => {

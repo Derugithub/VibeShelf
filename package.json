@@ -43,7 +43,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "tsx --test src/vibe/analyze.test.ts"
+    "test": "tsx --test src/vibe/analyze.test.ts src/vibe/match.test.ts src/shelf.test.ts"
   },
   "private": true
 }

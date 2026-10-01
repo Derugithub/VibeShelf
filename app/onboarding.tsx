@@ -30,12 +30,11 @@ export default function OnboardingScreen() {
               A mood board with nowhere else to be.
             </Text>
             <Text style={[styles.body, { color: theme.textSoft, fontFamily: fonts.body }]}>
-              VibeShelf reads color and light on your device and suggests words like warm, moody, or pastel. There is
-              no account, no cloud model, and no upload.
+              VibeShelf looks at color and light and suggests words like warm, moody, or pastel. There is no account,
+              and nothing leaves your phone.
             </Text>
             <Text style={[styles.fine, { color: theme.textFaint, fontFamily: fonts.body }]}>
-              Photos are copied into app storage on this device. Removing one from VibeShelf does not delete it from
-              your photo library.
+              VibeShelf keeps its own copy. Removing a photo here leaves the original in your photo library.
             </Text>
           </>
         ) : (
@@ -44,7 +43,7 @@ export default function OnboardingScreen() {
             <Text style={[styles.title, { color: theme.text, fontFamily: fonts.display }]}>Snap, tag, arrange, export.</Text>
             {[
               ['Add', 'Import from your library or take a photo.'],
-              ['Tag', 'Color and brightness become vibe words, on device.'],
+              ['Tag', 'Each photo gets a few words from its color and light.'],
               ['Arrange', 'Pin photos to a board, reorder them, and export one collage.'],
             ].map(([title, body], index) => (
               <View key={title} style={styles.step}>
@@ -56,8 +55,8 @@ export default function OnboardingScreen() {
               </View>
             ))}
             <Text style={[styles.fine, { color: theme.textFaint, fontFamily: fonts.body }]}>
-              Camera and photo access are asked only when you add a picture. If you decline, the sample shelf still
-              works, and you can enable access later in Settings.
+              Camera and photo access are asked only when you add a picture. If you skip that, you can still try the
+              sample photos, and turn access on later in Settings.
             </Text>
           </>
         )}
