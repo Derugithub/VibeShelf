@@ -2,6 +2,7 @@ import { type Href, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  BackHandler,
   Modal,
   Platform,
   Pressable,
@@ -18,6 +19,8 @@ import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { reorderIds } from '@/src/arrange';
+import { ArrangeList } from '@/src/components/ArrangeList';
 import { Button, IconButton } from '@/src/components/Button';
 import { Collage } from '@/src/components/Collage';
 import { EmptyState } from '@/src/components/EmptyState';
@@ -40,6 +43,8 @@ export default function BoardScreen() {
     useLibrary();
   const board = boards.find((item) => item.id === boardId);
   const [arrange, setArrange] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [unpinId, setUnpinId] = useState<string | null>(null);
   const [picker, setPicker] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -61,6 +66,23 @@ export default function BoardScreen() {
     else router.replace('/boards' as Href);
   }
 
+  function leaveBoard() {
+    if (arrange) {
+      setArrange(false);
+      return;
+    }
+    goBack();
+  }
+
+  useEffect(() => {
+    if (!arrange) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setArrange(false);
+      return true;
+    });
+    return () => sub.remove();
+  }, [arrange]);
+
   if (!board) {
     return (
       <View style={[styles.missing, { backgroundColor: theme.bg, paddingTop: insets.top }]}>
@@ -81,13 +103,14 @@ export default function BoardScreen() {
     heights[index] += height + 10;
   });
 
-  function move(index: number, direction: -1 | 1) {
+  function reorder(from: number, to: number) {
     if (!board) return;
-    const nextIndex = index + direction;
-    if (nextIndex < 0 || nextIndex >= ordered.length) return;
-    const ids = ordered.map((photo) => photo.id);
-    const [item] = ids.splice(index, 1);
-    ids.splice(nextIndex, 0, item);
+    const ids = reorderIds(
+      ordered.map((photo) => photo.id),
+      from,
+      to,
+    );
+    if (ids.every((id, index) => id === ordered[index]?.id)) return;
     setBoardPhotoIds(board.id, ids).catch(() => undefined);
   }
 
@@ -182,6 +205,7 @@ export default function BoardScreen() {
   return (
     <View style={[styles.fill, { backgroundColor: theme.bg }]}>
       <ScrollView
+        scrollEnabled={!dragging}
         contentContainerStyle={{
           paddingTop: insets.top + 8,
           paddingHorizontal: 20,
@@ -189,7 +213,7 @@ export default function BoardScreen() {
           gap: 16,
         }}>
         <View style={styles.top}>
-          <IconButton label="Back" onPress={goBack}>
+          <IconButton label={arrange ? 'Done arranging' : 'Back'} onPress={leaveBoard}>
             <Icon name="back" color={theme.text} />
           </IconButton>
           <View style={{ flex: 1 }} />
@@ -238,31 +262,12 @@ export default function BoardScreen() {
             <Button label="Add from shelf" variant="ghost" onPress={() => setPicker(true)} />
           </EmptyState>
         ) : arrange ? (
-          <View style={{ gap: 10 }}>
-            {ordered.map((photo, index) => (
-              <View key={photo.id} style={[styles.arrangeRow, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                <Image source={{ uri: photo.uri }} style={styles.thumb} contentFit="cover" />
-                <View style={{ flex: 1, gap: 6 }}>
-                  <View style={styles.tags}>
-                    {normalizeTags(photo.tags).slice(0, 2).map((tag) => (
-                      <Tag key={tag} id={tag} />
-                    ))}
-                  </View>
-                </View>
-                <View style={styles.arrangeActions}>
-                  <IconButton label="Move earlier" onPress={() => move(index, -1)}>
-                    <Icon name="up" color={theme.text} size={18} />
-                  </IconButton>
-                  <IconButton label="Move later" onPress={() => move(index, 1)}>
-                    <Icon name="down" color={theme.text} size={18} />
-                  </IconButton>
-                  <IconButton label="Remove from board" onPress={() => removeAt(photo.id)}>
-                    <Icon name="close" color={theme.danger} size={18} />
-                  </IconButton>
-                </View>
-              </View>
-            ))}
-          </View>
+          <ArrangeList
+            photos={ordered}
+            onReorder={reorder}
+            onRemove={setUnpinId}
+            onDraggingChange={setDragging}
+          />
         ) : (
           <View style={styles.masonry}>
             {columns.map((column, columnIndex) => (
@@ -292,7 +297,6 @@ export default function BoardScreen() {
             ))}
           </View>
         )}
-        <Button label="Delete board" variant="danger" onPress={() => setConfirming(true)} />
       </ScrollView>
 
       <PickerSheet
@@ -308,6 +312,22 @@ export default function BoardScreen() {
           setPicker(false);
         }}
       />
+
+      <Sheet visible={unpinId !== null} title="Remove from this board?" onClose={() => setUnpinId(null)}>
+        <Text style={{ color: theme.textSoft, fontFamily: fonts.body, fontSize: 16, lineHeight: 23 }}>
+          It leaves this board only. The photo stays in your library.
+        </Text>
+        <Button
+          label="Remove from board"
+          variant="danger"
+          onPress={() => {
+            if (!unpinId) return;
+            removeAt(unpinId);
+            setUnpinId(null);
+          }}
+        />
+        <Button label="Keep on board" variant="secondary" onPress={() => setUnpinId(null)} />
+      </Sheet>
 
       <Sheet visible={confirming} title="Delete this board?" onClose={() => setConfirming(false)}>
         <Text style={{ color: theme.textSoft, fontFamily: fonts.body, fontSize: 16, lineHeight: 23 }}>
@@ -439,17 +459,6 @@ const styles = StyleSheet.create({
   masonry: { flexDirection: 'row', gap: 10 },
   masonryImage: { width: '100%', borderRadius: 18 },
   masonryTag: { position: 'absolute', left: 8, bottom: 8 },
-  arrangeRow: {
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  thumb: { width: 64, height: 64, borderRadius: 12 },
-  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  arrangeActions: { gap: 6 },
   input: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 16,
