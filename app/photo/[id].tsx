@@ -27,6 +27,7 @@ export default function PhotoScreen() {
   const [confirming, setConfirming] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [note, setNote] = useState(photo?.note ?? '');
+  const [savedNote, setSavedNote] = useState(photo?.note ?? '');
   const noteRef = useRef(note);
   const noteInputRef = useRef<TextInput>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -37,7 +38,9 @@ export default function PhotoScreen() {
   photoIdRef.current = photo?.id;
 
   useEffect(() => {
-    setNote(photo?.note ?? '');
+    const next = photo?.note ?? '';
+    setNote(next);
+    setSavedNote(next);
   }, [photo?.id]);
 
   useEffect(() => {
@@ -140,6 +143,7 @@ export default function PhotoScreen() {
                   if (saveTimer.current) clearTimeout(saveTimer.current);
                   const next = noteRef.current.trim().slice(0, PHOTO_NOTE_LIMIT);
                   setNote(next);
+                  setSavedNote(next);
                   updatePhotoNote(photo.id, next).catch(() => undefined);
                 }}
                 placeholder="Add a short note…"
@@ -151,14 +155,16 @@ export default function PhotoScreen() {
                 accessibilityLabel="Note"
                 style={[styles.noteInput, { color: theme.text, fontFamily: fonts.body }]}
               />
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Done"
-                onPress={() => noteInputRef.current?.blur()}
-                hitSlop={8}
-                style={({ pressed }) => [styles.noteDone, { backgroundColor: theme.bg, opacity: pressed ? 0.7 : 1 }]}>
-                <Icon name="check" color={theme.accent} size={18} />
-              </Pressable>
+              {note !== savedNote ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Done"
+                  onPress={() => noteInputRef.current?.blur()}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.noteDone, { backgroundColor: theme.bg, opacity: pressed ? 0.7 : 1 }]}>
+                  <Icon name="check" color={theme.accent} size={18} />
+                </Pressable>
+              ) : null}
             </View>
             <Text style={[styles.noteCount, { color: theme.textFaint, fontFamily: fonts.medium }]}>
               {PHOTO_NOTE_LIMIT - note.length} left
