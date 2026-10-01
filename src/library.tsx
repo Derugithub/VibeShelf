@@ -12,6 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Platform } from 'react-native';
 
 import { confirm } from '@/src/haptics';
+import { clampNote } from '@/src/notes';
 import { getPhotoBytes, objectUrlFromBytes } from '@/src/idbPhotos';
 import { ensureCameraPermission, ensureLibraryPermission } from '@/src/permissions';
 import { createPhotoFromUri, deletePhotoFile, loadSampleInputs } from '@/src/photos';
@@ -42,6 +43,7 @@ type LibraryContextValue = {
   deleteBoard: (id: string) => Promise<void>;
   setBoardPhotoIds: (id: string, photoIds: string[]) => Promise<void>;
   pinPhotos: (id: string, photoIds: string[]) => Promise<void>;
+  updatePhotoNote: (id: string, note: string) => Promise<void>;
   photoById: (id: string) => Photo | undefined;
   boardById: (id: string) => Board | undefined;
 };
@@ -225,6 +227,13 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
             return { ...board, photoIds: merged, updatedAt: Date.now() };
           }),
         })).then(() => undefined),
+      updatePhotoNote: (id: string, note: string) => {
+        const next = clampNote(note);
+        return commit((prev) => ({
+          ...prev,
+          photos: prev.photos.map((photo) => (photo.id === id ? { ...photo, note: next || undefined } : photo)),
+        })).then(() => undefined);
+      },
       photoById: (id: string) => shelfRef.current.photos.find((photo) => photo.id === id),
       boardById: (id: string) => shelfRef.current.boards.find((board) => board.id === id),
     }),

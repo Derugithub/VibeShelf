@@ -11,6 +11,7 @@ export type Photo = {
   brightness: number;
   saturation: number;
   sampleKey?: string;
+  note?: string;
 };
 
 export type Board = {

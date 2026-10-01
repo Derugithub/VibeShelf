@@ -1,6 +1,7 @@
 import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 
+import { clampNote } from '@/src/notes';
 import { EMPTY_SHELF, type Board, type Photo, type ShelfData } from '@/src/types';
 import { isVibeId, normalizeTags, type VibeId } from '@/src/vibe/analyze';
 
@@ -19,6 +20,7 @@ function asPhoto(value: unknown): Photo | null {
   if (!Array.isArray(raw.tags) || !Array.isArray(raw.colors)) return null;
   const tags = raw.tags.filter((tag): tag is VibeId => typeof tag === 'string' && isVibeId(tag));
   const colors = raw.colors.filter((color): color is string => typeof color === 'string');
+  const note = typeof raw.note === 'string' ? clampNote(raw.note) : '';
   return {
     id: raw.id,
     uri: raw.uri,
@@ -30,6 +32,7 @@ function asPhoto(value: unknown): Photo | null {
     brightness: typeof raw.brightness === 'number' ? raw.brightness : 0.5,
     saturation: typeof raw.saturation === 'number' ? raw.saturation : 0,
     sampleKey: typeof raw.sampleKey === 'string' ? raw.sampleKey : undefined,
+    note: note || undefined,
   };
 }
 

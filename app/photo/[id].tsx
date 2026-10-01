@@ -1,5 +1,5 @@
 import { type Href, router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import { Icon } from '@/src/components/Icon';
 import { Sheet } from '@/src/components/Sheet';
 import { Tag } from '@/src/components/Tag';
 import { useLibrary } from '@/src/library';
+import { PHOTO_NOTE_LIMIT } from '@/src/notes';
 import { fonts, useTheme } from '@/src/theme';
 import { colorLabel, lightLabel, nearestColorName, normalizeTags } from '@/src/vibe/analyze';
 
@@ -17,7 +18,7 @@ export default function PhotoScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const photoId = Array.isArray(id) ? id[0] : id;
-  const { photos, boards, deletePhoto, createBoard, setBoardPhotoIds } = useLibrary();
+  const { photos, boards, deletePhoto, createBoard, setBoardPhotoIds, updatePhotoNote } = useLibrary();
   const photo = photos.find((item) => item.id === photoId);
   const [boardsOpen, setBoardsOpen] = useState(false);
   const [naming, setNaming] = useState(false);
@@ -25,6 +26,27 @@ export default function PhotoScreen() {
   const [draft, setDraft] = useState<string[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [note, setNote] = useState(photo?.note ?? '');
+  const noteRef = useRef(note);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveNote = useRef(updatePhotoNote);
+  const photoIdRef = useRef(photo?.id);
+  noteRef.current = note;
+  saveNote.current = updatePhotoNote;
+  photoIdRef.current = photo?.id;
+
+  useEffect(() => {
+    setNote(photo?.note ?? '');
+  }, [photo?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      const id = photoIdRef.current;
+      if (!id) return;
+      saveNote.current(id, noteRef.current).catch(() => undefined);
+    };
+  }, []);
 
   function goBack() {
     if (router.canGoBack()) router.back();
@@ -100,6 +122,34 @@ export default function PhotoScreen() {
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 28 }}>
         <Image source={{ uri: photo.uri }} style={styles.hero} contentFit="cover" />
         <View style={styles.body}>
+          <View style={[styles.noteCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <TextInput
+              value={note}
+              onChangeText={(value) => {
+                const next = value.slice(0, PHOTO_NOTE_LIMIT);
+                setNote(next);
+                if (saveTimer.current) clearTimeout(saveTimer.current);
+                saveTimer.current = setTimeout(() => {
+                  updatePhotoNote(photo.id, next).catch(() => undefined);
+                }, 300);
+              }}
+              onBlur={() => {
+                if (saveTimer.current) clearTimeout(saveTimer.current);
+                const next = noteRef.current.trim().slice(0, PHOTO_NOTE_LIMIT);
+                setNote(next);
+                updatePhotoNote(photo.id, next).catch(() => undefined);
+              }}
+              placeholder="Add a short note…"
+              placeholderTextColor={theme.textFaint}
+              maxLength={PHOTO_NOTE_LIMIT}
+              multiline
+              accessibilityLabel="Note"
+              style={[styles.noteInput, { color: theme.text, fontFamily: fonts.body }]}
+            />
+            <Text style={[styles.noteCount, { color: theme.textFaint, fontFamily: fonts.medium }]}>
+              {PHOTO_NOTE_LIMIT - note.length} left
+            </Text>
+          </View>
           <Text style={[styles.kicker, { color: theme.textFaint, fontFamily: fonts.semibold }]}>
             {lightLabel(photo.brightness)} · {colorLabel(photo.saturation)}
           </Text>
@@ -225,6 +275,25 @@ const styles = StyleSheet.create({
   },
   hero: { width: '100%', aspectRatio: 3 / 4, backgroundColor: '#221F2A' },
   body: { padding: 20, gap: 14 },
+  noteCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 8,
+    gap: 6,
+  },
+  noteInput: {
+    fontSize: 16,
+    lineHeight: 22,
+    minHeight: 44,
+    padding: 0,
+    textAlignVertical: 'top',
+  },
+  noteCount: {
+    alignSelf: 'flex-end',
+    fontSize: 12,
+  },
   kicker: { letterSpacing: 0.6, textTransform: 'uppercase', fontSize: 12 },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   section: { fontSize: 22, marginTop: 6 },
