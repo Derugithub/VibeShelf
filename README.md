@@ -1,10 +1,33 @@
 # VibeShelf
 
+## Overview
+
 Offline mood boards for iOS and Android. Import or take photos, tag them from color and light on the device, arrange them into boards, and export a collage. There is no account, no backend, and no cloud AI.
 
-## Run
+VibeShelf is an Expo Router app (`expo-router/entry`) at version 1.0.0. It is portrait-only, uses the URL scheme `vibeshelf`, and follows the system light and dark appearance. The iOS target supports tablets. The web target uses the Metro bundler with a single-page output.
 
-Requirements: Node.js 22.13 or newer, and the Expo Go app that matches Expo SDK 57.
+## Features
+
+- Import photos from the library, take a photo, or add the six bundled samples (`golden-hour`, `tidepool`, `night-window`, `pastel-room`, `market-day`, `fog-linen`).
+- Tag each photo on the device from color and brightness. The vibe words are Golden, Warm, Cool, Pastel, Night, Moody, Bright, Airy, Vivid, and Muted.
+- Filter the library by vibe tag.
+- Add a photo note of up to 140 characters.
+- Create, rename, and delete boards. Pin photos, reorder them, and remove them from a board.
+- Export one collage through the system share sheet. In a browser, export downloads a PNG named `vibeshelf-<board-slug>.png`.
+- Removing a photo from the shelf leaves the original in the photo library. Deleting a board leaves its photos in the library.
+- Camera and photo access are requested only when you add a picture. If access is denied, the app explains how to enable it in Settings. Sample photos still work.
+- Dark-first colors that follow the system theme (`userInterfaceStyle`: `automatic`).
+- Light haptic feedback on buttons, and a success haptic after photos are added and after a collage is exported.
+
+## Requirements
+
+- Node.js 22.13 or newer.
+- npm. This repo includes `package-lock.json`.
+- The Expo Go app that matches Expo SDK 57 (`expo` `~57.0.26`).
+
+[TODO: minimum iOS and Android versions are not set in `app.json`.]
+
+## Installation
 
 ```sh
 npm install
@@ -21,17 +44,34 @@ npx expo start --ios
 npx expo start --web
 ```
 
-`npm test` checks the on-device vibe heuristics.
+The same entry points are `npm start`, `npm run android`, `npm run ios`, and `npm run web`.
 
-## Screens
+## Configuration
+
+No environment variables or EAS secrets are required. Application code does not read `process.env`.
+
+Settings in `app.json`:
+
+- Name `VibeShelf`, slug `vibeshelf`, version `1.0.0`.
+- `userInterfaceStyle` is `automatic`.
+- iOS `supportsTablet` is true. Android `predictiveBackGestureEnabled` is false.
+- Splash and Android adaptive-icon background color is `#09080D`.
+- The `expo-image-picker` plugin sets photo and camera permission strings, and sets `microphonePermission` to false.
+- `experiments.typedRoutes` is true.
+
+[TODO: an iOS bundle identifier, an Android package name, and an EAS project id are not in the repo.]
+
+## Usage
+
+### Screens
 
 1. **Intro** — two pages on privacy and how tagging works. Camera and photo access are requested later, only when you add a picture.
 2. **Library** — a grid of photos with vibe tags. Import from the library, take a photo, or add the bundled sample set. Filter by tag.
-3. **Photo** — palette, brightness, and the boards a picture is pinned to. Remove it from the shelf without touching the original in your photo library.
+3. **Photo** — palette, brightness, a note of up to 140 characters, and the boards a picture is pinned to. Remove it from the shelf without touching the original in your photo library.
 4. **Boards** — create, rename, and delete collections.
-5. **Board** — masonry layout, add or remove photos, reorder, and export one image through the system share sheet.
+5. **Board** — masonry layout, add or remove photos, reorder, and export one image through the system share sheet. On the web, that export downloads `vibeshelf-<board-slug>.png`.
 
-## How to test
+### How to test
 
 Turn on airplane mode after the dev server has loaded the bundle. Tagging, boards, and export do not use the network.
 
@@ -41,8 +81,60 @@ Turn on airplane mode after the dev server has loaded the bundle. Tagging, board
 - Delete a board and confirm the photos remain in the library. Delete a photo and confirm it disappears from its boards.
 - Switch the device between dark and light appearance. The shelf is designed dark-first and follows the system theme.
 
-## What stays on the device
+### What stays on the device
 
-On iOS and Android, photo copies live in the app documents directory (`expo-file-system`). In a browser, those copies live in IndexedDB instead. Boards, tags, and the intro flag live in AsyncStorage. Vibe words come from local color and brightness heuristics in `src/vibe/analyze.ts` — dominant colors, warmth, and light — not from a network model.
+On iOS and Android, photo copies live in the app documents directory (`expo-file-system`, under `photos/`). In a browser, those copies live in IndexedDB (database `vibeshelf`, store `photos`) instead. Boards, tags, notes, and the intro flag live in AsyncStorage under the key `vibeshelf.v1`. Vibe words come from local color and brightness heuristics in `src/vibe/analyze.ts` — dominant colors, warmth, and light — not from a network model.
 
 Icons and the six sample photos are generated by `node scripts/generate-brand.mjs`.
+
+## Project structure
+
+```text
+app/                      Expo Router screens
+  _layout.tsx             Root stack, fonts, splash, and theme
+  onboarding.tsx          Two-page intro
+  (app)/index.tsx         Library tab
+  (app)/boards.tsx        Boards tab
+  photo/[id].tsx          Photo detail
+  board/[id].tsx          Board, arrange, and export
+src/                      Shelf state, storage, tagging, and UI
+  library.tsx             In-memory shelf and actions
+  storage.ts              AsyncStorage load and save
+  photos.ts               JPEG copies in the documents directory
+  idbPhotos.ts            Browser photo bytes in IndexedDB
+  vibe/analyze.ts         On-device color and light tags
+  components/             Buttons, collage, tags, and sheets
+assets/images/            App icon, splash, and favicon
+assets/samples/           Six bundled sample photos
+scripts/generate-brand.mjs
+app.json                  Expo config
+package.json              Scripts and dependencies
+```
+
+## Development
+
+`npm test` runs the Node test runner (`tsx --test`) on:
+
+- `src/vibe/analyze.test.ts`
+- `src/vibe/match.test.ts`
+- `src/shelf.test.ts`
+- `src/arrange.test.ts`
+- `src/notes.test.ts`
+
+TypeScript is strict. `tsconfig.json` extends `expo/tsconfig.base`, maps `@/*` to the repo root, and excludes `src/**/*.test.ts` from the app compile.
+
+Regenerate icons and the six sample photos with `node scripts/generate-brand.mjs`. That script uses `jpeg-js`.
+
+The workspace recommends the `expo.vscode-expo-tools` extension.
+
+[TODO: no lint script, format script, or CI workflow is defined in the repo.]
+
+## Contributing
+
+[TODO: there is no contributing guide, code of conduct, or issue template in the repo.]
+
+`package.json` sets `"private": true`.
+
+## License
+
+MIT. See [LICENSE](LICENSE). Copyright (c) 2026 Dereje G.
