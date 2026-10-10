@@ -59,7 +59,9 @@ Settings in `app.json`:
 - The `expo-image-picker` plugin sets photo and camera permission strings, and sets `microphonePermission` to false.
 - `experiments.typedRoutes` is true.
 
-[TODO: an iOS bundle identifier, an Android package name, and an EAS project id are not in the repo.]
+Store identifiers in `app.json`: iOS `bundleIdentifier` `com.deredo.vibeshelf` and Android `package` `com.deredo.vibeshelf`.
+
+[TODO: an EAS project id is not in the repo.]
 
 ## Usage
 

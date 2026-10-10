@@ -8,9 +8,11 @@
     "scheme": "vibeshelf",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.deredo.vibeshelf"
     },
     "android": {
+      "package": "com.deredo.vibeshelf",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
